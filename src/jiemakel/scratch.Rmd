@@ -90,3 +90,218 @@ all_places_of_publication |>
 d |> 
   write_sheet(ss="1kv7RLk62bUJCb-je94ajlEsIsoIBXweZChLBnAIxF-E")
 ```
+
+```{r}
+genre_categorisation_l <- read_sheet(ss="1aRjpOhqJiuKlLGWXkKQ_9jK5VPJqcIzdDQqygsGFdRc", sheet="hackathon_genre_categorization")
+genre_categorisation_t <- copy_to(con, genre_categorisation_l, name="genre_categorisation_t")
+DBI::dbGetQuery(con, "COPY genre_categorisation_t TO 's3://dhh26/books/genre_categorisation.parquet' (FORMAT parquet, COMPRESSION zstd)")
+DBI::dbGetQuery(con, "CREATE OR REPLACE VIEW books.genre_categorisation AS SELECT * FROM read_parquet('s3://dhh26/books/genre_categorisation.parquet')")
+genre_categorisation <- tbl(con,dbplyr::in_schema("books","genre_categorisation"))
+```
+
+```{r}
+place_name_mapping_l <- read_sheet(ss="1kv7RLk62bUJCb-je94ajlEsIsoIBXweZChLBnAIxF-E", sheet="unstandardized_place_name_mapping")
+place_name_mapping_t <- copy_to(con, place_name_mapping_l, name="place_name_mapping_t")
+DBI::dbGetQuery(con, "COPY place_name_mapping_t TO 's3://dhh26/books/place_name_mapping.parquet' (FORMAT parquet, COMPRESSION zstd)")
+DBI::dbGetQuery(con, "CREATE OR REPLACE VIEW books.place_name_mapping AS SELECT * FROM read_parquet('s3://dhh26/books/place_name_mapping.parquet')")
+place_name_mapping <- tbl(con,dbplyr::in_schema("books","place_name_mapping"))
+```
+
+```{r}
+place_to_religion_l <- read_sheet(ss="1Sm1rn67me-y9TkaIK1D1GK2MuKWIqMNTJOnomuSf_yM", sheet="Metadata_religion")
+place_to_religion_t <- copy_to(con, place_to_religion_l, name="place_to_religion_t")
+DBI::dbGetQuery(con, "COPY place_to_religion_t TO 's3://dhh26/books/place_to_religion.parquet' (FORMAT parquet, COMPRESSION zstd)")
+DBI::dbGetQuery(con, "CREATE OR REPLACE VIEW books.place_to_religion AS SELECT * FROM read_parquet('s3://dhh26/books/place_to_religion.parquet')")
+place_to_religion <- tbl(con,dbplyr::in_schema("books","place_to_religion"))
+```
+
+```{r}
+place_to_crises_l <- read_sheet(ss="1Sm1rn67me-y9TkaIK1D1GK2MuKWIqMNTJOnomuSf_yM", sheet="Metadata_crises")
+place_to_crises_t <- copy_to(con, place_to_crises_l, name="place_to_crises_t")
+DBI::dbGetQuery(con, "COPY place_to_crises_t TO 's3://dhh26/books/place_to_crises.parquet' (FORMAT parquet, COMPRESSION zstd)")
+DBI::dbGetQuery(con, "CREATE OR REPLACE VIEW books.place_to_crises AS SELECT * FROM read_parquet('s3://dhh26/books/place_to_crises.parquet')")
+place_to_crises <- tbl(con,dbplyr::in_schema("books","place_to_crises"))
+```
+
+```{r}
+place_to_universities_l <- read_sheet(ss="1Sm1rn67me-y9TkaIK1D1GK2MuKWIqMNTJOnomuSf_yM", sheet="Metadata_universities")
+place_to_universities_t <- copy_to(con, place_to_universities_l, name="place_to_universities_t")
+DBI::dbGetQuery(con, "COPY place_to_universities_t TO 's3://dhh26/books/place_to_universities.parquet' (FORMAT parquet, COMPRESSION zstd)")
+DBI::dbGetQuery(con, "CREATE OR REPLACE VIEW books.place_to_universities AS SELECT * FROM read_parquet('s3://dhh26/books/place_to_universities.parquet')")
+place_to_universities <- tbl(con,dbplyr::in_schema("books","place_to_universities"))
+```
+
+```{r}
+d <- all_places_of_publication |>
+  filter(source %in% c("vd16","vd17","vd18")) |> 
+  filter(place_type=="standardized") |>
+  union_all(
+    all_places_of_publication |>
+      filter(source %in% c("vd16","vd17","vd18")) |> 
+      filter(place_type=="unstandardized") |>
+      anti_join(
+        all_places_of_publication |>
+              filter(source %in% c("vd16","vd17","vd18")) |> 
+              filter(place_type=="standardized"),
+        join_by(source, record_number)
+      ) 
+  ) |>
+  inner_join(all_genre_terms) |>
+  inner_join(genre_categorisation, join_by(genre_term==german_genre_term)) |>
+  inner_join(all_years_of_publication) |>
+  count(place_of_publication, Level1, year_of_publication) |>
+  collect()
+```
+
+```{r}
+all_d |>
+  filter(place_of_publication %in% c("Frankfurt (Main)","Leipzig","Augsburg","Nürnberg","Köln","Wittenberg","Jena","Straßburg","Halle, Saale")) |>
+  filter(year_of_publication>=1500,year_of_publication<=1800) |>
+  mutate(
+    decade_of_publication=floor(year_of_publication/10)*10,
+    place_of_publication=fct_lump_n(place_of_publication, 10, w=n),
+    Level1=fct_lump_n(Level1, 10, w=n)
+  ) |>
+  group_by(place_of_publication, decade_of_publication, Level1) |>
+  summarise(n=sum(n), .groups="drop") |>
+  complete(place_of_publication, decade_of_publication, Level1, fill=list(n=0)) |>
+  ggplot(aes(x=decade_of_publication, y=n)) +
+  geom_line() +
+  theme_hsci_discrete() +
+  facet_wrap(Level1~place_of_publication, scales="free_y")
+```
+
+```{r}
+all_years_of_publication |> filter(source %in% c("vd16","vd17","vd18"),year_of_publication>=1500,year_of_publication<=1800) |> count(year_of_publication) |> ggplot(aes(x=year_of_publication,y=n)) + annotate("rect", xmin = 1618, xmax = 1648,ymin=0,ymax=Inf, fill="red", alpha=0.2) + annotate("text", x=1630, y=6000, label="Thirty Years' War") + geom_step() + theme_hsci_discrete() + scale_x_continuous(breaks=seq(0,2000,by=20)) + xlab("Year") + ylab("Number of publications") + scale_y_continuous(breaks=seq(0,20000,by=1000))
+```
+
+```{r}
+all_places_of_publication |>
+  filter(source %in% c("vd16","vd17","vd18")) |>
+  left_join(place_name_mapping |> filter(is.na(bad_link))) |>
+  mutate(place_of_publication=coalesce(standard_place_of_publication, place_of_publication)) |> 
+  distinct(record_number, source, place_of_publication) |>
+  right_join(all_years_of_publication |> filter(
+      year_of_publication>=1618,year_of_publication<=1648)) |> 
+  count(place_of_publication, year_of_publication) |> 
+  mutate(place_of_publication = na_if(place_of_publication, "[S.l.]")) |>
+  collect() |>
+  mutate(place_of_publication=place_of_publication |> fct_lump_n(n=29,w=n)) |>
+  group_by(place_of_publication, year_of_publication) |> 
+  summarise(n=sum(n), .groups="drop") |>
+  ggplot(aes(x=year_of_publication,y=n)) + 
+  geom_step() + 
+  theme_hsci_discrete() + 
+  facet_wrap(~place_of_publication, scales="free_y") +
+  xlab("Year") + 
+  ylab("Number of publications")
+```
+
+```{r}
+all_places_of_publication |>
+  filter(source %in% c("vd16","vd17","vd18")) |>
+  left_join(place_name_mapping |> filter(is.na(bad_link))) |>
+  mutate(place_of_publication=coalesce(standard_place_of_publication, place_of_publication)) |> 
+  filter(place_of_publication=="Magdeburg") |>
+  distinct(record_number, source, place_of_publication) |>
+  inner_join(all_years_of_publication |> filter(
+      year_of_publication>=1500,year_of_publication<=1800)) |> 
+  inner_join(all_genre_terms) |>
+  inner_join(genre_categorisation, join_by(genre_term==german_genre_term)) |>
+  count(place_of_publication, year_of_publication, Level1) |> 
+  mutate(place_of_publication = na_if(place_of_publication, "[S.l.]")) |>
+  collect() |>
+  mutate(place_of_publication=place_of_publication |> fct_lump_n(n=29,w=n)) |>
+  group_by(place_of_publication, year_of_publication, Level1) |> 
+  summarise(n=sum(n), .groups="drop") |>
+  ggplot(aes(x=year_of_publication,y=n, fill=Level1)) + 
+  geom_area(position='stack') + 
+  theme_hsci_discrete() + 
+  xlab("Year") + 
+  ylab("Number of publications")  + annotate("rect", xmin = 1618, xmax = 1648,ymin=0,ymax=Inf, fill="red", alpha=0.2) + annotate("text", x=1651, y=300, label="Sack of Magdeburg") + scale_x_continuous(breaks=seq(0,2000,by=20)) + geom_vline(xintercept=1631) + ggtitle("Number of publications in Magdeburg")
+```
+
+```{r}
+all_places_of_publication |>
+  filter(source %in% c("vd16","vd17","vd18")) |>
+  left_join(place_name_mapping |> filter(is.na(bad_link))) |>
+  mutate(place_of_publication=coalesce(standard_place_of_publication, place_of_publication)) |> 
+  distinct(record_number, source, place_of_publication) |>
+  inner_join(all_years_of_publication |> filter(
+      year_of_publication>=1500,year_of_publication<=1800)) |> 
+  inner_join(place_to_religion, join_by(place_of_publication)) |>
+  filter(year_of_publication>=`start year` | is.na(`start year`), year_of_publication<=`end year` | is.na(`end year`)) |>
+  count(year_of_publication, dominant_religion) |> 
+  collect() |>
+  group_by(year_of_publication, dominant_religion) |> 
+  summarise(n=sum(n), .groups="drop") |>
+  ggplot(aes(x=year_of_publication,y=n)) +
+  geom_step() +
+  facet_wrap(~dominant_religion,scales="free_y",ncol=1) +
+  theme_hsci_discrete() + 
+  xlab("Year") + 
+  ylab("Number of publications")  + annotate("rect", xmin = 1618, xmax = 1648,ymin=0,ymax=Inf, fill="red", alpha=0.2) + scale_x_continuous(breaks=seq(0,2000,by=20)) 
+```
+
+
+```{r}
+all_places_of_publication |>
+  filter(source %in% c("vd16","vd17","vd18")) |>
+  left_join(place_name_mapping |> filter(is.na(bad_link))) |>
+  mutate(place_of_publication=coalesce(standard_place_of_publication, place_of_publication)) |> 
+  distinct(record_number, source, place_of_publication) |>
+  inner_join(all_years_of_publication |> filter(
+      year_of_publication>=1500,year_of_publication<=1800)) |> 
+  inner_join(place_to_university |> distinct(place_of_publication, university_city), join_by(place_of_publication)) |>
+  count(year_of_publication, university_city) |> 
+  collect() |>
+  group_by(year_of_publication, university_city) |> 
+  summarise(n=sum(n), .groups="drop") |>
+  ggplot(aes(x=year_of_publication,y=n)) +
+  geom_step() +
+  facet_wrap(~university_city,scales="free_y",ncol=1) +
+  theme_hsci_discrete() + 
+  xlab("Year") + 
+  ylab("Number of publications")  + annotate("rect", xmin = 1618, xmax = 1648,ymin=0,ymax=Inf, fill="red", alpha=0.2) + scale_x_continuous(breaks=seq(0,2000,by=20)) 
+```
+
+```{r}
+all_places_of_publication |>
+    filter(source %in% c("vd16","vd17","vd18")) |>
+    left_join(place_name_mapping |> filter(is.na(bad_link))) |>
+    mutate(place_of_publication=coalesce(standard_place_of_publication, place_of_publication)) |> 
+    distinct(record_number, source, place_of_publication) |>
+    inner_join(all_years_of_publication |> filter(
+        year_of_publication>=1500,year_of_publication<=1800)) |> 
+    inner_join(place_to_universities |> group_by(place_of_publication, university_city) |> summarise(religion_university=max(religion_university)), join_by(place_of_publication)) |>
+    count(year_of_publication, university_city,religion_university) |> 
+    collect() |>
+    group_by(year_of_publication, university_city, religion_university) |> 
+    summarise(n=sum(n), .groups="drop") |>
+    ggplot(aes(x=year_of_publication,y=n)) +
+    geom_step() +
+    facet_wrap(~religion_university,scales="free_y",ncol=1) +
+    theme_hsci_discrete() + 
+    xlab("Year") + 
+    ylab("Number of publications")  + annotate("rect", xmin = 1618, xmax = 1648,ymin=0,ymax=Inf, fill="red", alpha=0.2) + scale_x_continuous(breaks=seq(0,2000,by=20)) 
+```
+
+```{r}
+all_places_of_publication |>
+    filter(source %in% c("vd16","vd17","vd18")) |>
+    left_join(place_name_mapping |> filter(is.na(bad_link))) |>
+    mutate(place_of_publication=coalesce(standard_place_of_publication, place_of_publication)) |> 
+    distinct(record_number, source, place_of_publication) |>
+    inner_join(all_years_of_publication |> filter(
+        year_of_publication>=1500,year_of_publication<=1800)) |> 
+    count(year_of_publication, place_of_publication) |> 
+    collect() |>
+    group_by(year_of_publication, place_of_publication) |> 
+    summarise(n=sum(n), .groups="drop") |>
+    ggplot(aes(x=year_of_publication,y=n)) +
+    geom_step() +
+    facet_wrap(~religion_university,scales="free_y",ncol=1) +
+    theme_hsci_discrete() + 
+    xlab("Year") + 
+    ylab("Number of publications")  + annotate("rect", xmin = 1618, xmax = 1648,ymin=0,ymax=Inf, fill="red", alpha=0.2) + scale_x_continuous(breaks=seq(0,2000,by=20)) 
+```

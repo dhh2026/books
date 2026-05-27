@@ -15,6 +15,7 @@ dependencies = [
     "hereutil>=0.1.5",
     "matplotlib>=3.10.9",
     "narwhals>=2.21.0",
+    "nbformat>=5.10.4",
     "pandas>=3.0.3",
     "plotly>=6.7.0",
     "networkx>=3.6.1",

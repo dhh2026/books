@@ -347,7 +347,7 @@ def extract_genre_terms(dataset: str, standard: str):
         q = (
                 f(dataset).filter(c('field_code')=='044S', c('subfield_code')=='a')
             )
-    if standard == 'marc21':
+    elif standard == 'marc21':
         q = (
             f(dataset).filter(c('field_code').is_in(['655']), c('subfield_code')=='a')
         )
