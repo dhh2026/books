@@ -20,37 +20,43 @@ def clean_text(text):
     return text.strip()
 
 
-def clean_authors(text):
+def clean_author(text):
     # Extract all key-value pairs in their exact sequential order
-    pairs = re.findall(r'([^|$]+)\$([^|]*)', text)
+    pairs = dict(re.findall(r'([^|$]+)\$([^|]*)', text.lower()))
+
+    author = ''
+    # authors = []
+    # current_record = {}
     
-    authors = []
-    current_record = {}
+    for key, value in pairs.items():
+
+        if key in ('7', 'a', 'd', 'p'):
+            author_name = ''.join([clean_text(pairs.get('p', '')).replace(' ', ''), 
+                        clean_text(pairs.get('a', '')).replace(' ', ''), 
+                        clean_text(pairs.get('d', '')).replace(' ', '')])
+            author = ', '.join([pairs.get('7', ''), 
+                                author_name])
+        
+    #     if key_lower in ('7', 'a', 'd', 'p'):
+    #         # If we see a tag we already have, package the current record and reset
+    #         if key_lower in current_record:
+    #             author_name = ''.join([clean_text(current_record.get('p', '')).replace(' ', ''), 
+    #                                    clean_text(current_record.get('a', '')).replace(' ', ''), 
+    #                                    clean_text(current_record.get('d', '')).replace(' ', '')])
+    #             author = ', '.join([current_record.get('7', ''), 
+    #                                 author_name])
+    #             authors.append(author)
+    #             current_record = {}
+            
+    #         current_record[key_lower] = value
+            
+    # # Save the last record remaining after the loop finishes
+    # if current_record:
+    #     author_name = ''.join([clean_text(current_record.get('p', '')).replace(' ', ''), 
+    #                             clean_text(current_record.get('a', '')).replace(' ', ''), 
+    #                             clean_text(current_record.get('d', '')).replace(' ', '')])
+    #     author = ', '.join([current_record.get('7', ''), 
+    #                         author_name])
+    #     authors.append(author)
     
-    for key, value in pairs:
-        key_lower = key.lower()
-        
-        if key_lower in ('7', 'a', 'd'):
-            # If we see a tag we already have, package the current record and reset
-            if key_lower in current_record:
-                author = (
-                    current_record.get('7', ''), 
-                    ', '.join([clean_text(current_record.get('a', '')), # Clean 'a' on export
-                                clean_text(current_record.get('d', ''))] ) # Clean 'd' on export
-                )
-                authors.append(author)
-                current_record = {}
-            
-            current_record[key_lower] = value
-            
-    # Save the last record remaining after the loop finishes
-    if current_record:
-        author = (
-            current_record.get('7', ''), 
-            ', '.join([clean_text(current_record.get('a', '')), 
-                                clean_text(current_record.get('d', ''))] 
-                    )
-        )
-        authors.append(author)
-        
-    return authors
+    return author
