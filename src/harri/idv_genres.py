@@ -76,11 +76,10 @@ records = []
 for table_name, (year_min, year_max) in dataset_ranges.items():
     print(f"  {table_name}...")
     years_df = con.sql(f"""
-        SELECT DISTINCT record_number, TRY_CAST(value AS INTEGER) AS year
+        SELECT DISTINCT record_number, TRY_CAST(regexp_extract(value, '([0-9]{{4}})', 1) AS INTEGER) AS year
         FROM "{table_name}"
         WHERE field_code = '011@' AND subfield_code = 'a'
-          AND regexp_matches(value, '^\\d{{4}}$')
-          AND TRY_CAST(value AS INTEGER) BETWEEN {year_min} AND {year_max}
+          AND TRY_CAST(regexp_extract(value, '([0-9]{{4}})', 1) AS INTEGER) BETWEEN {year_min} AND {year_max}
     """).df()
 
     genres_df = con.sql(f"""
@@ -101,7 +100,6 @@ print(f"  Done — {len(full_df):,} genre-record pairs loaded")
 
 # ── City data ────────────────────────────────────────────────────────────────
 # Canonical display names for the top-20 cities.
-# Variants maps every raw value found in the data → canonical display name.
 TOP20_CITIES = [
     "Frankfurt, Main",
     "Leipzig",
@@ -125,17 +123,57 @@ TOP20_CITIES = [
     "München",
 ]
 
-CITY_VARIANTS: dict[str, str] = {
-    # Frankfurt variants
-    "Frankfurt, Main":  "Frankfurt, Main",
-    "Frankfurt am Main": "Frankfurt, Main",
-    # Halle variants
-    "Halle, Saale":    "Halle, Saale",
-    "Halle (Saale)":   "Halle, Saale",
-}
-# All other cities map to themselves
-for _city in TOP20_CITIES:
-    CITY_VARIANTS.setdefault(_city, _city)
+def clean_and_classify(city_name):
+    if not city_name:
+        return None
+    c = str(city_name).lower().strip()
+    if "leipzig" in c:
+        return "Leipzig"
+    elif "frankfurt" in c:
+        if "oder" in c:
+            return None
+        else:
+            return "Frankfurt, Main"
+    elif "jena" in c:
+        return "Jena"
+    elif "wittenberg" in c:
+        return "Wittenberg"
+    elif "berlin" in c:
+        return "Berlin"
+    elif "nürnberg" in c or "nuremberg" in c:
+        return "Nürnberg"
+    elif "halle" in c:
+        return "Halle, Saale"
+    elif "hamburg" in c:
+        return "Hamburg"
+    elif "dresden" in c:
+        return "Dresden"
+    elif "helmstedt" in c:
+        return "Helmstedt"
+    elif "rostock" in c:
+        return "Rostock"
+    elif "wien" in c or "vienna" in c:
+        return "Wien"
+    elif "straßburg" in c or "strasbourg" in c:
+        return "Straßburg"
+    elif "augsburg" in c:
+        return "Augsburg"
+    elif "göttingen" in c or "goettingen" in c:
+        return "Göttingen"
+    elif "tübingen" in c or "tuebingen" in c:
+        return "Tübingen"
+    elif "erfurt" in c:
+        return "Erfurt"
+    elif "köln" in c or "cologne" in c or "colonia" in c:
+        return "Köln"
+    elif "altdorf" in c:
+        return None
+    elif "münchen" in c or "munich" in c:
+        return "München"
+    elif "basel" in c or "basle" in c:
+        return "Basel"
+    else:
+        return None
 
 print("Loading city data from parquet files...")
 city_records = []
@@ -150,7 +188,7 @@ for table_name in dataset_ranges:
 city_df_all = pd.concat(city_records, ignore_index=True)
 
 # Normalise to canonical names, drop anything not in our top-20
-city_df_all["city"] = city_df_all["raw_city"].map(CITY_VARIANTS)
+city_df_all["city"] = city_df_all["raw_city"].apply(clean_and_classify)
 city_df_all = city_df_all.dropna(subset=["city"])
 city_df_all = city_df_all[["record_number", "city"]].drop_duplicates()
 
@@ -546,7 +584,10 @@ def update_chart(year_range, display_level, l1_vals, l2_vals, l3_vals, smoothing
     def add_traces(col, cmap, subset=None, dash="solid", name_suffix=""):
         src = subset if subset is not None else dff
         for cat in sorted(src[col].dropna().unique()):
-            y = smooth(src[src[col] == cat].groupby("year").size())
+            cat_df = src[src[col] == cat]
+            if subset is None or city_mode == "combined":
+                cat_df = cat_df.drop_duplicates(subset=["record_number", col])
+            y = smooth(cat_df.groupby("year").size())
             label = f"{cat}{name_suffix}"
             fig.add_trace(go.Scatter(
                 x=list(full_years), y=y.values, mode="lines", name=label,
@@ -564,7 +605,8 @@ def update_chart(year_range, display_level, l1_vals, l2_vals, l3_vals, smoothing
     # ── No city filter — original behaviour ──────────────────────────────────
     if not city_active:
         if display_level == 0:
-            y = smooth(dff.groupby("year").size())
+            unique_dff = dff.drop_duplicates(subset=["record_number"])
+            y = smooth(unique_dff.groupby("year").size())
             fig.add_trace(go.Scatter(
                 x=list(full_years), y=y.values, mode="lines", name="All genres",
                 line=dict(width=2.5, color="#0072B2"),
@@ -577,7 +619,8 @@ def update_chart(year_range, display_level, l1_vals, l2_vals, l3_vals, smoothing
     # ── City filter active — combined ─────────────────────────────────────────
     elif city_mode == "combined":
         if display_level == 0:
-            y = smooth(dff.groupby("year").size())
+            unique_dff = dff.drop_duplicates(subset=["record_number"])
+            y = smooth(unique_dff.groupby("year").size())
             cities_label = ", ".join(sorted(city_vals))
             fig.add_trace(go.Scatter(
                 x=list(full_years), y=y.values, mode="lines", name=cities_label,
