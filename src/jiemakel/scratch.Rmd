@@ -176,6 +176,29 @@ all_years_of_publication |> filter(source %in% c("vd16","vd17","vd18"),year_of_p
 ```
 
 ```{r}
+all_years_of_publication |> 
+  filter(source %in% c("vd16","vd17","vd18"), year_of_publication>=1500,year_of_publication<=1800) |> 
+  count(year_of_publication) |> 
+  mutate(series="publications") |> 
+  union_all(all_years_of_publication |> 
+              filter(source %in% c("vd16","vd17","vd18"), year_of_publication>=1500,year_of_publication<=1800) |> 
+              inner_join(all_publishers) |> 
+              distinct(year_of_publication, publisher) |>
+              count(year_of_publication) |> 
+              mutate(series="publishers")) |> 
+  ggplot(aes(x=year_of_publication,y=n, color=series)) + 
+  annotate("rect", xmin = 1618, xmax = 1648,ymin=0,ymax=Inf, fill="red", alpha=0.2) +
+  annotate("text", x=1630, y=6000, label="Thirty Years' War") +
+  geom_step() +
+  theme_hsci_discrete() +
+  scale_x_continuous(breaks=seq(0,2000,by=20)) +
+  xlab("Year") +
+  ylab("") +
+  scale_y_continuous(breaks=seq(0,20000,by=1000))
+```
+
+
+```{r}
 all_places_of_publication |>
   filter(source %in% c("vd16","vd17","vd18")) |>
   left_join(place_name_mapping |> filter(is.na(bad_link))) |>
@@ -304,4 +327,103 @@ all_places_of_publication |>
     theme_hsci_discrete() + 
     xlab("Year") + 
     ylab("Number of publications")  + annotate("rect", xmin = 1618, xmax = 1648,ymin=0,ymax=Inf, fill="red", alpha=0.2) + scale_x_continuous(breaks=seq(0,2000,by=20)) 
+```
+
+```{r}
+all_years_of_publication |> 
+  filter(source %in% c("vd16","vd17","vd18"), year_of_publication>=1600,year_of_publication<1700) |> 
+  count(year_of_publication) |> 
+  ggplot(aes(x=year_of_publication,y=n)) + 
+  geom_step() +
+  geom_step(data=all_places_of_publication |>
+    filter(source %in% c("vd16","vd17","vd18")) |>
+    left_join(place_name_mapping |> filter(is.na(bad_link))) |>
+    mutate(place_of_publication=coalesce(standard_place_of_publication, place_of_publication)) |> 
+    filter(place_of_publication=="Leipzig") |>
+    distinct(record_number, source, place_of_publication) |>
+    inner_join(all_years_of_publication) |> 
+    count(year_of_publication)) +
+  theme_hsci_discrete(base_size = 26) +
+  xlab(NULL) +
+  ylab(NULL) +
+  scale_y_continuous(breaks=seq(0,20000,by=1000)) + 
+  theme(legend.position = c(0.1, 0.9), panel.grid = element_blank()) + scale_x_continuous(breaks=c(1608, 1618, 1630, 1648, 1672, 1688, 1693)) + coord_cartesian(xlim=c(1604,1695))
+```
+
+```{r}
+all_years_of_publication |> 
+  filter(source %in% c("vd16","vd17","vd18"), year_of_publication>=1600,year_of_publication<1700) |> 
+  count(year_of_publication) |> 
+  ggplot(aes(x=year_of_publication,y=n)) + 
+  geom_step() +
+  theme_hsci_discrete(base_size = 26) +
+  xlab(NULL) +
+  ylab(NULL) +
+  scale_y_continuous(breaks=seq(0,20000,by=1000)) + 
+  theme(legend.position = c(0.1, 0.9), panel.grid = element_blank()) + scale_x_continuous(breaks=c(1608, 1618, 1630, 1648, 1672, 1688, 1693)) + coord_cartesian(xlim=c(1604,1695))
+```
+
+
+```{r}
+all_places_of_publication |>
+    filter(source %in% c("vd16","vd17","vd18")) |>
+    left_join(place_name_mapping |> filter(is.na(bad_link))) |>
+    mutate(place_of_publication=coalesce(standard_place_of_publication, place_of_publication)) |> 
+    filter(place_of_publication=="Magdeburg") |>
+    distinct(record_number, source, place_of_publication) |>
+    inner_join(all_years_of_publication |> filter(
+        year_of_publication>=1620,year_of_publication<=1640)) |> 
+    count(year_of_publication) |> 
+    mutate(series="publications") |>
+    union_all(
+        all_places_of_publication |>
+            filter(source %in% c("vd16","vd17","vd18")) |>
+            left_join(place_name_mapping |> filter(is.na(bad_link))) |>
+            mutate(place_of_publication=coalesce(standard_place_of_publication, place_of_publication)) |> 
+            filter(place_of_publication=="Magdeburg") |>
+            distinct(record_number, source, place_of_publication) |>
+            inner_join(all_years_of_publication |> filter(
+                year_of_publication>=1620,year_of_publication<=1640)) |> 
+            inner_join(all_publishers) |>
+            distinct(year_of_publication, publisher) |>
+            count(year_of_publication) |> 
+            mutate(series="publishers",n=5*n) 
+    ) |>
+    ggplot(aes(x=year_of_publication,y=n, color=series)) + 
+    geom_step() + 
+    theme_hsci_discrete(base_size = 26) + 
+    xlab("Year") + scale_y_continuous(sec.axis = sec_axis(\(t) t/5, name="Number of publishers")) +
+    ylab("Number of publications") + theme(legend.position=c(0.8,0.8)) + labs(color=NULL)
+```
+
+```{r}
+all_places_of_publication |>
+    filter(source %in% c("vd16","vd17","vd18")) |>
+    left_join(place_name_mapping |> filter(is.na(bad_link))) |>
+    mutate(place_of_publication=coalesce(standard_place_of_publication, place_of_publication)) |> 
+    filter(place_of_publication=="Rostock") |>
+    distinct(record_number, source, place_of_publication) |>
+    inner_join(all_years_of_publication |> filter(
+        year_of_publication>=1620,year_of_publication<=1640)) |> 
+    count(year_of_publication) |> 
+    mutate(series="publications") |>
+    union_all(
+        all_places_of_publication |>
+            filter(source %in% c("vd16","vd17","vd18")) |>
+            left_join(place_name_mapping |> filter(is.na(bad_link))) |>
+            mutate(place_of_publication=coalesce(standard_place_of_publication, place_of_publication)) |> 
+            filter(place_of_publication=="Rostock") |>
+            distinct(record_number, source, place_of_publication) |>
+            inner_join(all_years_of_publication |> filter(
+                year_of_publication>=1620,year_of_publication<=1640)) |> 
+            inner_join(all_publishers) |>
+            distinct(year_of_publication, publisher) |>
+            count(year_of_publication) |> 
+            mutate(series="publishers",n=5*n) 
+    ) |>
+    ggplot(aes(x=year_of_publication,y=n, color=series)) + 
+    geom_step() + 
+    theme_hsci_discrete(base_size = 26) + 
+    xlab("Year") + scale_y_continuous(sec.axis = sec_axis(\(t) t/5, name="Number of publishers")) +
+    ylab("Number of publications") + theme(legend.position=c(0.8,0.8)) + labs(color=NULL)
 ```
